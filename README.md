@@ -8,7 +8,7 @@ PDF ingest follows upstream [`example/pdf_md_conversion`](https://github.com/HKU
 
 - Python 3.10+ (uv will install it)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- An LLM key for Marker (Azure OpenAI or Gemini) and an OpenAI-compatible endpoint for extraction
+- An LLM key for Marker (Azure OpenAI or Gemini) and a Grok, Claude, or OpenAI key for extraction
 - 5–20 PDFs
 
 ```bash
@@ -58,11 +58,21 @@ uv venv --python 3.10
 source .venv/bin/activate
 uv pip install -r requirements.txt
 cp .env.example .env
-# edit .env: OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
+# edit .env: LLM_PROVIDER=grok|claude|openai and the matching key
 uv run python -m atlas_rag.kg_construction.utils.md_processing.markdown_to_json \
     --input /path/to/pdf_process/md_output \
     --output data
 ```
+
+Extraction does not need a new client. `atlas-rag` already calls `chat.completions` on an OpenAI client. Grok is that API at `https://api.x.ai/v1`. Claude is the same shape at `https://api.anthropic.com/v1/`. Set `LLM_PROVIDER` and the key:
+
+| Provider | Key | Default model |
+| --- | --- | --- |
+| `grok` | `XAI_API_KEY` | `grok-4` |
+| `claude` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-5` |
+| `openai` | `OPENAI_API_KEY` | `gpt-4o-mini` |
+
+`LLM_BASE_URL` and `LLM_MODEL` override the defaults. Marker itself stays on Azure or Gemini; this switch is only for triple extraction.
 
 `--input` is the Markdown directory. `--output` is where JSON files are written. If Marker created one subdirectory per paper, point `--input` at the directory that actually contains the `.md` files, or run the command once per paper directory.
 

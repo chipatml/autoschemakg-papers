@@ -1,7 +1,10 @@
 """Extract an AutoSchemaKG graph from a JSON paper file.
 
-Expects the list written by pdf_to_json.py. filename_pattern is a substring
-of the input filename, so data/robotics.json is selected by 'robotics'.
+Expects the list written by the Markdown-to-JSON step. filename_pattern is a
+substring of the input filename, so data/robotics.json is selected by 'robotics'.
+
+LLM_PROVIDER selects the client. atlas-rag only needs an OpenAI-compatible
+chat.completions endpoint, which both Grok and Claude expose.
 """
 
 import argparse
@@ -21,6 +24,38 @@ ROBOTICS_HINT = (
     "baseline, and metric. Keep entity names as they appear in the paper."
 )
 
+PROVIDERS = {
+    "grok": {
+        "key": "XAI_API_KEY",
+        "base_url": "https://api.x.ai/v1",
+        "model": "grok-4",
+    },
+    "claude": {
+        "key": "ANTHROPIC_API_KEY",
+        "base_url": "https://api.anthropic.com/v1/",
+        "model": "claude-sonnet-4-5",
+    },
+    "openai": {
+        "key": "OPENAI_API_KEY",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+    },
+}
+
+
+def build_client():
+    provider = os.environ.get("LLM_PROVIDER", "grok").strip().lower()
+    if provider not in PROVIDERS:
+        raise SystemExit(f"LLM_PROVIDER must be one of: {', '.join(PROVIDERS)}")
+    spec = PROVIDERS[provider]
+    api_key = os.environ.get(spec["key"])
+    if not api_key:
+        raise SystemExit(f"Set {spec['key']} in .env for LLM_PROVIDER={provider}")
+    base_url = os.environ.get("LLM_BASE_URL") or spec["base_url"]
+    model_name = os.environ.get("LLM_MODEL") or spec["model"]
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    return provider, client, model_name
+
 
 def main() -> None:
     load_dotenv()
@@ -33,22 +68,18 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.input.is_file():
-        raise SystemExit(f"Missing {args.input}. Run scripts/pdf_to_json.py first.")
+        raise SystemExit(f"Missing {args.input}. Run the Markdown-to-JSON step first.")
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    base_url = os.environ.get("OPENAI_BASE_URL")
-    model_name = os.environ.get("OPENAI_MODEL")
-    if not api_key or not model_name:
-        raise SystemExit("Set OPENAI_API_KEY and OPENAI_MODEL in .env")
+    provider, client, model_name = build_client()
+    print(f"provider={provider} model={model_name}")
+    print(ROBOTICS_HINT)
 
-    # Extractor matches files in a directory by filename substring.
     staged = args.output / "_input"
     staged.mkdir(parents=True, exist_ok=True)
     staged_file = staged / args.input.name
     shutil.copyfile(args.input, staged_file)
 
-    client = OpenAI(api_key=api_key, base_url=base_url or None)
-    generator = LLMGenerator(client, model_name=model_name)
+    generator = LLMGenerator(client, model_name=model_name, backend="custom")
     config = ProcessingConfig(
         model_path=model_name,
         data_directory=str(staged),
@@ -61,7 +92,6 @@ def main() -> None:
         remove_doc_spaces=True,
     )
     kg = KnowledgeGraphExtractor(model=generator, config=config)
-    print(ROBOTICS_HINT)
     print(f"extracting {staged_file.name} -> {args.output}")
     kg.run_extraction()
     kg.convert_json_to_csv()

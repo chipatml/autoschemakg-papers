@@ -2,13 +2,15 @@
 
 Small starter for a knowledge graph from a handful of paper PDFs with [AutoSchemaKG](https://github.com/HKUST-KnowComp/AutoSchemaKG) (MIT). This is not the prebuilt ATLAS-Pes2o graph. You supply the papers.
 
-PDF ingest follows upstream [`example/pdf_md_conversion`](https://github.com/HKUST-KnowComp/AutoSchemaKG/blob/main/example/pdf_md_conversion/readme.md): PDF to Markdown with [pdf_process](https://github.com/Swgj/pdf_process) (Marker), Markdown to JSON, then triple extraction. Use [uv](https://docs.astral.sh/uv/) for both environments. Do not use conda or pip as the package manager.
+PDF ingest follows upstream [`example/pdf_md_conversion`](https://github.com/HKUST-KnowComp/AutoSchemaKG/blob/main/example/pdf_md_conversion/readme.md): PDF to Markdown, Markdown to JSON, then triple extraction. Use [uv](https://docs.astral.sh/uv/) for both environments. Do not use conda.
+
+Grok and Claude are the extraction backends. Marker does not need either of them.
 
 ## What you need
 
 - Python 3.10+ (uv will install it)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- An LLM key for Marker (Azure OpenAI or Gemini) and a Grok, Claude, or OpenAI key for extraction
+- A Grok or Claude API key for extraction
 - 5–20 PDFs
 
 ```bash
@@ -17,36 +19,43 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## 1. PDF to Markdown
 
-Upstream asks for a separate environment because `marker-pdf` pins old dependencies. Keep that split; only the installer changes.
+Marker converts the PDF with its own layout model. Leave `use_llm: false` unless a paper has tables you need. The LLM pass in upstream `pdf_process` is Azure or Gemini only; it is not required, and it is not how Grok or Claude enter this pipeline.
 
 ```bash
 git clone https://github.com/Swgj/pdf_process
 cd pdf_process
 uv venv --python 3.10 .venv
 source .venv/bin/activate
-uv pip install 'marker-pdf[full]' google-genai
+uv pip install 'marker-pdf[full]'
 ```
 
 On macOS, Marker still needs the system libraries from the [pdf_process README](https://github.com/Swgj/pdf_process) (`brew install weasyprint glib pango harfbuzz fontconfig cairo` and the symlinks). uv does not replace those.
 
-Edit `config.yaml` the same way as upstream:
+In `config.yaml`:
 
 - `input.path`: a folder of PDFs, or one PDF
 - `file_filters.extensions: [".pdf"]`
 - `output.base_dir: "md_output"`
-- Azure: set `llm_service` to `marker.services.azure_openai.AzureOpenAIService` and `api.api_key_env: "AZURE_API_KEY"`
-- Gemini: comment out `llm_service` and set `api.api_key_env: "GEMINI_API_KEY"`
-- `extract_images: false` if you want LLM descriptions of figures; `true` to keep image files only
-- `page_range`: `null` for the whole paper, or a list of pages
-
-Export the key, then run Marker with the uv environment active:
+- `use_llm: false`
+- `page_range`: `null` for the whole paper, or a list of pages to drop references
 
 ```bash
-export AZURE_API_KEY=...    # or GEMINI_API_KEY
 bash run.sh
 ```
 
 Markdown lands in `md_output/` (one subdirectory per PDF if `create_subdirs: true`).
+
+To have Grok or Claude read a PDF instead of Marker, use the CLI on a single file and save the reply as Markdown. That login is a subscription session, not the API key used in the next step.
+
+```bash
+# Grok CLI, after `grok login`
+grok -p "Convert this PDF to Markdown. Keep headings, tables, and equations as text. Skip references." papers/one.pdf > one.md
+
+# Claude Code
+claude -p "Convert this PDF to Markdown. Keep headings, tables, and equations as text. Skip references." papers/one.pdf > one.md
+```
+
+Do this only for a few hard papers. It is not the batch path.
 
 ## 2. Markdown to JSON
 
@@ -58,21 +67,32 @@ uv venv --python 3.10
 source .venv/bin/activate
 uv pip install -r requirements.txt
 cp .env.example .env
-# edit .env: LLM_PROVIDER=grok|claude|openai and the matching key
+```
+
+Pick a provider in `.env`. Extraction calls `chat.completions` on an OpenAI client. Grok and Claude both expose that. A `grok login` or `claude` browser session is not accepted here; those are subscription tokens.
+
+| Provider | Key | Endpoint | Default model |
+| --- | --- | --- | --- |
+| `grok` | `XAI_API_KEY` | `https://api.x.ai/v1` | `grok-4` |
+| `claude` | `ANTHROPIC_API_KEY` | `https://api.anthropic.com/v1/` | `claude-sonnet-4-5` |
+| `openai` | `OPENAI_API_KEY` | `https://api.openai.com/v1` | `gpt-4o-mini` |
+
+`LLM_BASE_URL` and `LLM_MODEL` override the defaults. Example for Claude:
+
+```bash
+LLM_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+LLM_BASE_URL=https://api.anthropic.com/v1/
+LLM_MODEL=claude-sonnet-4-5
+```
+
+Then:
+
+```bash
 uv run python -m atlas_rag.kg_construction.utils.md_processing.markdown_to_json \
     --input /path/to/pdf_process/md_output \
     --output data
 ```
-
-Extraction does not need a new client. `atlas-rag` already calls `chat.completions` on an OpenAI client. Grok is that API at `https://api.x.ai/v1`. Claude is the same shape at `https://api.anthropic.com/v1/`. Set `LLM_PROVIDER` and the key:
-
-| Provider | Key | Default model |
-| --- | --- | --- |
-| `grok` | `XAI_API_KEY` | `grok-4` |
-| `claude` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-5` |
-| `openai` | `OPENAI_API_KEY` | `gpt-4o-mini` |
-
-`LLM_BASE_URL` and `LLM_MODEL` override the defaults. Marker itself stays on Azure or Gemini; this switch is only for triple extraction.
 
 `--input` is the Markdown directory. `--output` is where JSON files are written. If Marker created one subdirectory per paper, point `--input` at the directory that actually contains the `.md` files, or run the command once per paper directory.
 
@@ -84,13 +104,15 @@ Extraction does not need a new client. `atlas-rag` already calls `chat.completio
 uv run python scripts/run_extraction.py --input data/robotics.json --output import/robotics
 ```
 
-Outputs in `import/robotics/`:
+The script prints `provider=grok` or `provider=claude` and the model name. Outputs in `import/robotics/`:
 
 - triple JSON from the LLM
 - CSV node and edge lists
 - a GraphML file
 
-Open the GraphML in NetworkX or Gephi. On a small set, skip schema induction until the triples look right. Pass `--concepts` to run it.
+Open the GraphML in Gephi (Layout → ForceAtlas 2) or NetworkX. On a small set, skip schema induction until the triples look right. Pass `--concepts` to run it.
+
+For 50 papers of about 25 pages, triple extraction is on the order of $10–40 with Grok 4.6 ($2 / $6 per million input / output tokens) and $20–90 with Claude Sonnet 4.5 ($3 / $15). Full text plus `--concepts` is the high end. Marker with `use_llm: false` adds nothing to that bill.
 
 ## What to expect
 

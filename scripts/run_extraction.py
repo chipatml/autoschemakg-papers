@@ -3,8 +3,9 @@
 Expects the list written by the Markdown-to-JSON step. filename_pattern is a
 substring of the input filename, so data/robotics.json is selected by 'robotics'.
 
-LLM_PROVIDER selects the client. atlas-rag only needs an OpenAI-compatible
-chat.completions endpoint, which both Grok and Claude expose.
+LLM_PROVIDER selects the client. The default is Claude, and the key is the
+same Keychain item the PDF wrapper uses: service autoschemakg, account
+ANTHROPIC_API_KEY.
 """
 
 import argparse
@@ -50,7 +51,7 @@ def secret(name: str) -> str | None:
 
 
 def build_client():
-    provider = (secret("LLM_PROVIDER") or "grok").strip().lower()
+    provider = (secret("LLM_PROVIDER") or "claude").strip().lower()
     if provider not in PROVIDERS:
         raise SystemExit(f"LLM_PROVIDER must be one of: {', '.join(PROVIDERS)}")
     spec = PROVIDERS[provider]

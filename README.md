@@ -73,6 +73,8 @@ Pick a provider. Extraction calls `chat.completions` on an OpenAI client. Grok a
 
 On a Mac, store the key in the Keychain. The script checks the service `autoschemakg` before `.env`.
 
+From the terminal, `-w` with no value prompts, so the key is not saved in shell history:
+
 ```bash
 security add-generic-password -U -s autoschemakg -a LLM_PROVIDER -w grok
 security add-generic-password -U -s autoschemakg -a XAI_API_KEY -w
@@ -81,7 +83,24 @@ security add-generic-password -U -s autoschemakg -a XAI_API_KEY -w
 # security add-generic-password -U -s autoschemakg -a ANTHROPIC_API_KEY -w
 ```
 
-`-w` with no value prompts, so the key is not saved in shell history. Optional items are `LLM_MODEL` and `LLM_BASE_URL`. If `security` is missing, or the item is not there, the script falls back to the environment and `.env`.
+Or add the item by hand in Keychain Access:
+
+1. Open Keychain Access and select the login keychain.
+2. File → New Password Item.
+3. Keychain Item Name: `autoschemakg`. This is the service the script looks up.
+4. Account Name: `XAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`.
+5. Password: the API key.
+6. Add a second item with account `LLM_PROVIDER` and password `grok` or `claude` if you do not want that in `.env`.
+
+Confirm the GUI item has a service, not only a label:
+
+```bash
+security find-generic-password -s autoschemakg -a XAI_API_KEY -w
+```
+
+That should print the key. If it says the item could not be found, Get Info on the item and set the service to `autoschemakg`. The script searches by service and account, not by the displayed label.
+
+Optional items are `LLM_MODEL` and `LLM_BASE_URL`. If `security` is missing, or the item is not there, the script falls back to the environment and `.env`.
 
 | Provider | Keychain account | Endpoint | Default model |
 | --- | --- | --- | --- |

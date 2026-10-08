@@ -2,3 +2,4 @@ pymupdf>=1.24
 atlas-rag
 openai>=1.40
 python-dotenv>=1.0
+pyyaml>=6

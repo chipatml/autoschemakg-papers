@@ -69,22 +69,25 @@ uv pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Pick a provider in `.env`. Extraction calls `chat.completions` on an OpenAI client. Grok and Claude both expose that. A `grok login` or `claude` browser session is not accepted here; those are subscription tokens.
+Pick a provider. Extraction calls `chat.completions` on an OpenAI client. Grok and Claude both expose that. A `grok login` or `claude` browser session is not accepted here; those are subscription tokens.
 
-| Provider | Key | Endpoint | Default model |
+On a Mac, store the key in the Keychain. The script checks the service `autoschemakg` before `.env`.
+
+```bash
+security add-generic-password -U -s autoschemakg -a LLM_PROVIDER -w grok
+security add-generic-password -U -s autoschemakg -a XAI_API_KEY -w
+# Claude instead:
+# security add-generic-password -U -s autoschemakg -a LLM_PROVIDER -w claude
+# security add-generic-password -U -s autoschemakg -a ANTHROPIC_API_KEY -w
+```
+
+`-w` with no value prompts, so the key is not saved in shell history. Optional items are `LLM_MODEL` and `LLM_BASE_URL`. If `security` is missing, or the item is not there, the script falls back to the environment and `.env`.
+
+| Provider | Keychain account | Endpoint | Default model |
 | --- | --- | --- | --- |
 | `grok` | `XAI_API_KEY` | `https://api.x.ai/v1` | `grok-4` |
 | `claude` | `ANTHROPIC_API_KEY` | `https://api.anthropic.com/v1/` | `claude-sonnet-4-5` |
 | `openai` | `OPENAI_API_KEY` | `https://api.openai.com/v1` | `gpt-4o-mini` |
-
-`LLM_BASE_URL` and `LLM_MODEL` override the defaults. Example for Claude:
-
-```bash
-LLM_PROVIDER=claude
-ANTHROPIC_API_KEY=sk-ant-...
-LLM_BASE_URL=https://api.anthropic.com/v1/
-LLM_MODEL=claude-sonnet-4-5
-```
 
 Then:
 

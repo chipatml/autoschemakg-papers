@@ -15,6 +15,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from keychain import get_secret
+
 from atlas_rag.kg_construction.triple_config import ProcessingConfig
 from atlas_rag.kg_construction.triple_extraction import KnowledgeGraphExtractor
 from atlas_rag.llm_generator import LLMGenerator
@@ -43,16 +45,23 @@ PROVIDERS = {
 }
 
 
+def secret(name: str) -> str | None:
+    return get_secret(name) or os.environ.get(name) or None
+
+
 def build_client():
-    provider = os.environ.get("LLM_PROVIDER", "grok").strip().lower()
+    provider = (secret("LLM_PROVIDER") or "grok").strip().lower()
     if provider not in PROVIDERS:
         raise SystemExit(f"LLM_PROVIDER must be one of: {', '.join(PROVIDERS)}")
     spec = PROVIDERS[provider]
-    api_key = os.environ.get(spec["key"])
+    api_key = secret(spec["key"])
     if not api_key:
-        raise SystemExit(f"Set {spec['key']} in .env for LLM_PROVIDER={provider}")
-    base_url = os.environ.get("LLM_BASE_URL") or spec["base_url"]
-    model_name = os.environ.get("LLM_MODEL") or spec["model"]
+        raise SystemExit(
+            f"No {spec['key']} in the Keychain service 'autoschemakg' or in the environment.\n"
+            f"Store it with: security add-generic-password -U -s autoschemakg -a {spec['key']} -w"
+        )
+    base_url = secret("LLM_BASE_URL") or spec["base_url"]
+    model_name = secret("LLM_MODEL") or spec["model"]
     client = OpenAI(api_key=api_key, base_url=base_url)
     return provider, client, model_name
 
